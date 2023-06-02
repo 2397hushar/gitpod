@@ -8,6 +8,8 @@ import (
 	"context"
 	"fmt"
 
+	"path/filepath"
+
 	connect "github.com/bufbuild/connect-go"
 	"github.com/gitpod-io/gitpod/common-go/log"
 	v1 "github.com/gitpod-io/gitpod/components/public-api/go/experimental/v1"
@@ -311,7 +313,7 @@ func getLimitFromPagination(pagination *v1.Pagination) (int, error) {
 
 // convertWorkspaceInfo convers a "protocol workspace" to a "public API workspace". Returns gRPC errors if things go wrong.
 func convertWorkspaceInfo(input *protocol.WorkspaceInfo) (*v1.Workspace, error) {
-	instance, err := convertWorkspaceInstance(input.LatestInstance, input.Workspace.Shareable)
+	instance, err := convertWorkspaceInstance(input.LatestInstance, input.Workspace.Config, input.Workspace.Shareable)
 	if err != nil {
 		return nil, err
 	}
@@ -333,7 +335,7 @@ func convertWorkspaceInfo(input *protocol.WorkspaceInfo) (*v1.Workspace, error) 
 	}, nil
 }
 
-func convertWorkspaceInstance(wsi *protocol.WorkspaceInstance, shareable bool) (*v1.WorkspaceInstance, error) {
+func convertWorkspaceInstance(wsi *protocol.WorkspaceInstance, config *protocol.WorkspaceConfig, shareable bool) (*v1.WorkspaceInstance, error) {
 	if wsi == nil {
 		return nil, nil
 	}
@@ -403,6 +405,11 @@ func convertWorkspaceInstance(wsi *protocol.WorkspaceInstance, shareable bool) (
 		ports = append(ports, port)
 	}
 
+	var recentFolders []string
+	if config.CheckoutLocation != "" {
+		recentFolders = append(recentFolders, filepath.Join("/workspace", config.CheckoutLocation))
+	}
+
 	return &v1.WorkspaceInstance{
 		InstanceId:  wsi.ID,
 		WorkspaceId: wsi.WorkspaceID,
@@ -418,7 +425,8 @@ func convertWorkspaceInstance(wsi *protocol.WorkspaceInstance, shareable bool) (
 				Timeout:           wsi.Status.Conditions.Timeout,
 				FirstUserActivity: firstUserActivity,
 			},
-			Ports: ports,
+			Ports:         ports,
+			RecentFolders: recentFolders,
 		},
 	}, nil
 }
