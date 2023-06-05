@@ -1472,6 +1472,7 @@ export class WorkspaceStarter {
         );
         const userTimeoutPromise = this.entitlementService.getDefaultWorkspaceTimeout(user, new Date());
         const allowSetTimeoutPromise = this.entitlementService.maySetTimeout(user, new Date());
+        const workspaceLifetimePromise = this.entitlementService.getDefaultWorkspaceLifetime(user, new Date());
 
         let featureFlags = instance.configuration!.featureFlags || [];
 
@@ -1502,8 +1503,13 @@ export class WorkspaceStarter {
         spec.setClass(instance.workspaceClass!);
 
         if (workspace.type === "regular") {
-            const [defaultTimeout, allowSetTimeout] = await Promise.all([userTimeoutPromise, allowSetTimeoutPromise]);
+            const [defaultTimeout, allowSetTimeout, workspaceLifetime] = await Promise.all([
+                userTimeoutPromise,
+                allowSetTimeoutPromise,
+                workspaceLifetimePromise,
+            ]);
             spec.setTimeout(defaultTimeout);
+            spec.setMaximumLifetime(workspaceLifetime);
             if (allowSetTimeout) {
                 if (user.additionalData?.workspaceTimeout) {
                     try {
