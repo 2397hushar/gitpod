@@ -4,7 +4,7 @@
  * See License.AGPL.txt in the project root for license information.
  */
 
-import { scrubKeyValue } from "./scrubbing";
+import { scrubKeyValue, scrubValue } from "./scrubbing";
 
 const inspect: (object: any) => string = require("util").inspect; // undefined in frontend
 
@@ -361,8 +361,15 @@ function scrubPayload(payload: any, plainLogging: boolean): any {
     if (payload === undefined || payload === null) {
         return undefined;
     }
-    if (typeof payload !== "object") {
-        return "[redacted:not-an-object]";
+    const payloadType = typeof payload;
+    if (payloadType === "string") {
+        return scrubValue(payload);
+    }
+    if (payloadType === "boolean" || payloadType === "number") {
+        return payload;
+    }
+    if (payloadType !== "object") {
+        return `[redacted:not-an-object:${payloadType}]`;
     }
     const result: any = {};
     for (const [key, value] of Object.entries(payload)) {
