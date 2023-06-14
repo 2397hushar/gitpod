@@ -4,7 +4,7 @@
  * See License.AGPL.txt in the project root for license information.
  */
 
-import { scrubKeyValue, scrubValue } from "./scrubbing";
+import { scrub } from "./scrubbing";
 
 const inspect: (object: any) => string = require("util").inspect; // undefined in frontend
 
@@ -358,30 +358,7 @@ function scrubPayload(payload: any, plainLogging: boolean): any {
     if (plainLogging) {
         return payload;
     }
-    if (payload === undefined || payload === null) {
-        return undefined;
-    }
-    const payloadType = typeof payload;
-    if (payloadType === "string") {
-        return scrubValue(payload);
-    }
-    if (payloadType === "boolean" || payloadType === "number") {
-        return payload;
-    }
-    if (payloadType !== "object") {
-        return `[redacted:not-an-object:${payloadType}]`;
-    }
-    const result: any = {};
-    for (const [key, value] of Object.entries(payload)) {
-        if (typeof value === "string") {
-            result[key] = scrubKeyValue(key, value);
-        } else if (typeof value === "boolean" || typeof value === "number") {
-            result[key] = value;
-        } else {
-            result[key] = "[redacted:nested]";
-        }
-    }
-    return result;
+    return scrub(payload, false);
 }
 
 // See https://cloud.google.com/error-reporting/docs/formatting-error-messages
