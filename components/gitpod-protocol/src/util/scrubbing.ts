@@ -7,50 +7,51 @@
 import { createHash } from "crypto";
 
 /**
- * `scrub` function is used to redact sensitive information from the given object.
- * It traverses through the properties of the object and replaces sensitive values
- * with a placeholder "[redacted]" or a more specific placeholder based on the context.
- * It also handles arrays and nested objects.
+ * `TrustedValue` is a generic wrapper class used to mark certain values as "trusted".
+ * This means these values are safe from being scrubbed or redacted by the Scrubber interface.
+ * A typical use case is to prepare values for logging or similar uses where data sanitization is required.
  *
- * If an instance of `ScrubbedValue` is encountered,
- * it calls the `scrub` method on it, allowing for custom scrubbing logic on a per-value basis.
- * `ScrubbedValue` instances can be created using `createScrubbedValue` function.
+ * @see Scrubber to scrub an underlyig value as necessary.
  *
- * The function does not mutate the original data structures. Instead, it creates new data structures
- * that mirror the originals but with sensitive information redacted.
- *
- * @param obj - The object to be scrubbed.
- * @param nested - A boolean to determine whether to scrub nested objects or arrays.
- *                 Default is `true`, which means the function will scrub nested objects or arrays.
- *
- * @returns - The scrubbed object with redacted sensitive information.
+ * @template T - The type of the value being wrapped.
+ * @property value - The value being wrapped.
  */
-export function scrub(obj: any, nested: boolean = true): any {
-    return doScrub(obj, 0, nested);
+export class TrustedValue<T = any> {
+    constructor(readonly value: T) {}
 }
 
 /**
- * `Scrubber` interface is used to define the structure for the scrubbing utility.
- * An object of this type is used to redact sensitive information from a string or a key-value pair.
+ * The `Scrubber` interface defines methods for scrubbing or anonymizing data.
+ * It helps in preparing data by sanitizing it and ensuring that sensitive information is either hashed or redacted.
+ * The scrubbing operation does not mutate the original data structure but creates a new one with the scrubbed data.
  */
 export interface Scrubber {
     /**
-     * `scrubKeyValue` method is used to redact sensitive information from a key-value pair.
-     * @param key - The key of the key-value pair.
-     * @param value - The value of the key-value pair.
-     * @returns - The redacted value for the key-value pair.
+     * Scrub an entire object, potentially recursively if `nested` is true.
+     *
+     * @param {any} obj - The object to be scrubbed. This object is not mutated.
+     * @param {boolean} [nested] - A flag indicating whether nested scrubbing should be performed. Defaults to true.
+     * @returns {any} - The scrubbed object. This is a new object, not a mutation of the original.
+     */
+    scrub(obj: any, nested?: boolean): any;
+
+    /**
+     * Takes a key-value pair and returns a scrubbed version of the value
+     * if the key matches any of the defined sensitive fields.
+     *
+     * @param {string} key - The key of the data to be scrubbed.
+     * @param {string} value - The value of the data to be scrubbed.
+     * @returns {string} - The scrubbed value. The original value is not mutated.
      */
     scrubKeyValue(key: string, value: string): string;
+
     /**
-     * `scrubValue` method is used to redact sensitive information from a string.
-     * @param value - The string to be redacted.
-     * @returns - The redacted string.
+     * Takes a value and scrubs it based on defined sensitive patterns.
+     *
+     * @param {string} value - The value to be scrubbed.
+     * @returns {string} - The scrubbed value. The original value is not mutated.
      */
     scrubValue(value: string): string;
-}
-
-export function createScrubbedValue(scrub: (scrubber: Scrubber) => any): any {
-    return new ScrubbedValue(scrub);
 }
 
 const redactedFields = ["auth_", "password", "token", "key", "jwt", "secret", "email"];
@@ -96,7 +97,10 @@ const regexes = new Map<RegExp, Sanitisatiser>([
     [new RegExp(hashedFields.join("|"), "i"), SanitiseHash],
 ]);
 
-const scrubber: Scrubber = {
+export const scrubber: Scrubber = {
+    scrub: function (obj: any, nested: boolean = true): any {
+        return doScrub(obj, 0, nested);
+    },
     scrubKeyValue: function (key: string, value: string): string {
         for (const [regex, sanitisatiser] of regexes) {
             if (regex.test(key)) {
@@ -116,16 +120,12 @@ const scrubber: Scrubber = {
     },
 };
 
-class ScrubbedValue {
-    constructor(readonly scrub: (scrubber: Scrubber) => any) {}
-}
-
 function doScrub(obj: any, depth: number, nested: boolean): any {
     if (obj === undefined || obj === null) {
         return undefined;
     }
-    if (obj instanceof ScrubbedValue) {
-        return obj.scrub(scrubber);
+    if (obj instanceof TrustedValue) {
+        return obj.value;
     }
     const objType = typeof obj;
     if (objType === "string") {

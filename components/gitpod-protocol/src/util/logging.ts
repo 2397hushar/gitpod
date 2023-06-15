@@ -4,7 +4,7 @@
  * See License.AGPL.txt in the project root for license information.
  */
 
-import { scrub } from "./scrubbing";
+import { scrubber } from "./scrubbing";
 
 const inspect: (object: any) => string = require("util").inspect; // undefined in frontend
 
@@ -358,7 +358,7 @@ function scrubPayload(payload: any, plainLogging: boolean): any {
     if (plainLogging) {
         return payload;
     }
-    return scrub(payload, false);
+    return scrubber.scrub(payload, false);
 }
 
 // See https://cloud.google.com/error-reporting/docs/formatting-error-messages
