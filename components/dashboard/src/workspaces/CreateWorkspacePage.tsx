@@ -178,7 +178,7 @@ export function CreateWorkspacePage() {
     const [selectAccountError, setSelectAccountError] = useState<SelectAccountPayload | undefined>(undefined);
 
     const createWorkspace = useCallback(
-        async (options?: Omit<GitpodServer.CreateWorkspaceOptions, "contextUrl">) => {
+        async (options?: Omit<Omit<GitpodServer.CreateWorkspaceOptions, "contextUrl">, "organizationId">) => {
             // add options from search params
             const opts = options || {};
 
@@ -496,7 +496,7 @@ interface StatusMessageProps {
     error?: StartWorkspaceError;
     reset: () => void;
     setSelectAccountError: (error?: SelectAccountPayload) => void;
-    createWorkspace: (opts: Omit<GitpodServer.CreateWorkspaceOptions, "contextUrl">) => void;
+    createWorkspace: (opts: Omit<Omit<GitpodServer.CreateWorkspaceOptions, "contextUrl">, "organizationId">) => void;
 }
 const ErrorMessage: FunctionComponent<StatusMessageProps> = ({
     error,
