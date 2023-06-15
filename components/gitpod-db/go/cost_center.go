@@ -78,10 +78,7 @@ func (c *CostCenterManager) GetOrCreateCostCenter(ctx context.Context, attributi
 	if err != nil {
 		if errors.Is(err, CostCenterNotFound) {
 			logger.Info("No existing cost center. Creating one.")
-			defaultSpendingLimit := c.cfg.ForUsers
-			if attributionID.IsEntity(AttributionEntity_Team) {
-				defaultSpendingLimit = c.cfg.ForTeams
-			}
+			defaultSpendingLimit := c.computeDefaultSpendingLimit(attributionID)
 			result = CostCenter{
 				ID:                attributionID,
 				CreationTime:      NewVarCharTime(now),
@@ -120,6 +117,55 @@ func (c *CostCenterManager) GetOrCreateCostCenter(ctx context.Context, attributi
 	}
 
 	return result, nil
+}
+
+// computeDefaultSpendingLimit computes the default spending limit for a new CostCenter.
+// if this is the first org the user ever created, we use the default spending limit for users.
+func (c *CostCenterManager) computeDefaultSpendingLimit(attributionID AttributionID) int32 {
+	_, orgId := attributionID.Values()
+
+	// fetch the first owner that joined the org
+	var userId string
+	db := c.conn.Raw(`
+		SELECT userid
+		FROM d_b_team_membership
+		WHERE
+			teamId = ? AND
+			creationTime = (
+				SELECT min(creationTime)
+				FROM d_b_team_membership
+				WHERE
+					role='owner' AND
+					deleted = 0 AND
+					teamID = ?
+			)
+	`, orgId, orgId).Scan(&userId)
+	if db.Error != nil {
+		log.WithError(db.Error).WithField("attributionId", attributionID).Error("Failed to get userId for org.")
+		return c.cfg.ForTeams
+	}
+
+	// fetch the first org the user ever created
+	var firstOrgId string
+	db = c.conn.Raw(`
+		SELECT teamid
+		FROM d_b_team_membership
+		WHERE
+			userId = ? AND
+			creationTime = (
+				SELECT min(creationTime)
+				FROM d_b_team_membership
+				WHERE userId = ?
+			)
+	`, userId, userId).Scan(&firstOrgId)
+	if db.Error != nil {
+		log.WithError(db.Error).WithField("attributionId", attributionID).Error("Failed to get first org for user.")
+		return c.cfg.ForTeams
+	}
+	if firstOrgId == orgId {
+		return c.cfg.ForUsers
+	}
+	return c.cfg.ForTeams
 }
 
 func getCostCenter(ctx context.Context, conn *gorm.DB, attributionId AttributionID) (CostCenter, error) {
