@@ -78,10 +78,7 @@ func (c *CostCenterManager) GetOrCreateCostCenter(ctx context.Context, attributi
 	if err != nil {
 		if errors.Is(err, CostCenterNotFound) {
 			logger.Info("No existing cost center. Creating one.")
-			defaultSpendingLimit := c.cfg.ForUsers
-			if attributionID.IsEntity(AttributionEntity_Team) {
-				defaultSpendingLimit = c.cfg.ForTeams
-			}
+			defaultSpendingLimit := c.getSpendingLimitForNewCostCenter(attributionID)
 			result = CostCenter{
 				ID:                attributionID,
 				CreationTime:      NewVarCharTime(now),
@@ -120,6 +117,60 @@ func (c *CostCenterManager) GetOrCreateCostCenter(ctx context.Context, attributi
 	}
 
 	return result, nil
+}
+
+// computeDefaultSpendingLimit computes the spending limit for a new Organization.
+// If the first joined member has not already granted credits to another org, we grant them the the free credits allowance.
+func (c *CostCenterManager) getSpendingLimitForNewCostCenter(attributionID AttributionID) int32 {
+	_, orgId := attributionID.Values()
+
+	// fetch the first owner that joined the org
+	var userId string
+	db := c.conn.Raw(`
+		SELECT userid
+		FROM d_b_team_membership
+		WHERE
+			teamId = ? AND
+			creationTime = (
+				SELECT min(creationTime)
+				FROM d_b_team_membership
+				WHERE
+					role='owner' AND
+					deleted = 0 AND
+					teamID = ?
+			)
+	`, orgId, orgId).Scan(&userId)
+	if db.Error != nil {
+		log.WithError(db.Error).WithField("attributionId", attributionID).Error("Failed to get userId for org.")
+		return c.cfg.ForTeams
+	}
+
+	if userId == "" {
+		log.WithField("attributionId", attributionID).Error("Failed to get userId for org.")
+		return c.cfg.ForTeams
+	}
+
+	// check if the user has already granted free credits to another org
+	var count int64
+	db = c.conn.Raw(`
+		SELECT count(*)
+		FROM d_b_free_credits
+		WHERE
+			userId = ?
+	`, userId).Scan(&count)
+	if db.Error != nil {
+		log.WithError(db.Error).WithField("attributionId", attributionID).Error("Failed to get first org for user.")
+		return c.cfg.ForTeams
+	}
+	if count == 0 {
+		db = c.conn.Exec(`INSERT INTO d_b_free_credits (userId, organizationId) VALUES (?, ?)`, userId, orgId)
+		if db.Error != nil {
+			log.WithError(db.Error).WithField("attributionId", attributionID).Error("Failed to insert free credits.")
+			return c.cfg.ForTeams
+		}
+		return c.cfg.ForUsers
+	}
+	return c.cfg.ForTeams
 }
 
 func getCostCenter(ctx context.Context, conn *gorm.DB, attributionId AttributionID) (CostCenter, error) {
